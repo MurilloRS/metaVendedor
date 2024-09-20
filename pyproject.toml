@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "metavendedor"
+version = "0.1.0"
+description = ""
+authors = ["Murillo Rodrigues <murillorodrigues1409@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+streamlit = "^1.38.0"
+pandas = "^2.2.2"
+openpyxl = "^3.1.5"
+pyodbc = "^5.1.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
