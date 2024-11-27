@@ -1,18 +1,24 @@
-import pyodbc
-import pandas as pd
 from datetime import datetime
+
+import pandas as pd
+import pyodbc
 import streamlit as st
+
 
 # Função para conectar ao banco de dados
 def conectar_banco():
     try:
-        conn = pyodbc.connect('DRIVER={SQL Server};SERVER=192.168.1.22;DATABASE=TESTE;UID=sa;PWD=Moitgt2526')
+        conn = pyodbc.connect(
+            'DRIVER={SQL Server};SERVER=192.168.2.10;DATABASE=MOINHO;UID=mrs;PWD=100881*Mr')
+        # conn = pyodbc.connect('DRIVER={SQL Server};SERVER=192.168.1.22;DATABASE=TESTE;UID=mrs;PWD=100881*Mr')
         return conn
     except Exception as e:
         st.error(f"Erro ao conectar ao banco de dados: {e}")
         return None
 
 # Função para buscar a empresa do vendedor
+
+
 def buscar_empresa(cod_vend):
     conn = conectar_banco()
     if conn:
@@ -26,23 +32,25 @@ def buscar_empresa(cod_vend):
 
 
 # Função para verificar se a meta já existe na tabela prev_vda
-def verificar_meta_existente(cd_emp, mes_ref, dt_ini_modelo, dt_fim_modelo):
+def verificar_meta_existente(cd_emp, dt_ini_modelo):
     conn = conectar_banco()
     if conn:
         query = """
             SELECT cd_prev_vda
             FROM dbo.prev_vda
-            WHERE cd_emp = ? AND mes_ref = ? AND dt_ini_modelo = ? AND dt_fim_modelo = ?
+            WHERE cd_emp = ? AND mes_ref = ? AND cd_tp_prev = 'FATUVL'
         """
         cursor = conn.cursor()
-        cursor.execute(query, cd_emp, mes_ref, dt_ini_modelo, dt_fim_modelo)
+        cursor.execute(query, cd_emp, dt_ini_modelo)
         result = cursor.fetchone()
         conn.close()
         return result[0] if result else None
     return None
 
 # Função para inserir um novo registro na tabela prev_vda
-def inserir_meta(cd_emp, mes_ref, dt_ini_modelo, dt_fim_modelo):
+
+
+def inserir_meta(cd_emp, dt_ini_modelo, dt_fim_modelo):
     conn = conectar_banco()
     if conn:
         try:
@@ -53,12 +61,19 @@ def inserir_meta(cd_emp, mes_ref, dt_ini_modelo, dt_fim_modelo):
             cursor.execute(seq_query)
             seq_meta = cursor.fetchone()[0]
 
-            # Inserir na tabela prev_vda
+            # Inserir na tabela prev_vda, mas só se não houver duplicata
             insert_prev_vda = """
-                INSERT INTO dbo.prev_vda (cd_prev_vda, mes_ref, dt_ini_modelo, dt_fim_modelo, cd_tp_prev, cd_emp, TipoPeriodoMetaID, DataInicio, DataFim)
-                VALUES (?, ?, ?, ?, 'FATUVL', ?, 1, ?, ?)
+                IF NOT EXISTS (
+                    SELECT 1 FROM dbo.prev_vda 
+                    WHERE cd_emp = ? AND mes_ref = ? AND cd_tp_prev = 'FATUVL'
+                )
+                BEGIN
+                    INSERT INTO dbo.prev_vda (cd_prev_vda, mes_ref, dt_ini_modelo, dt_fim_modelo, cd_tp_prev, cd_emp, TipoPeriodoMetaID, DataInicio, DataFim)
+                    VALUES (?, ?, ?, ?, 'FATUVL', ?, 1, ?, ?)
+                END
             """
-            cursor.execute(insert_prev_vda, seq_meta, mes_ref, dt_ini_modelo, dt_fim_modelo, cd_emp, dt_ini_modelo, dt_fim_modelo)
+            cursor.execute(insert_prev_vda, cd_emp, dt_ini_modelo, seq_meta, dt_ini_modelo,
+                           dt_ini_modelo, dt_ini_modelo, cd_emp, dt_ini_modelo, dt_fim_modelo)
 
             conn.commit()
             conn.close()
@@ -69,6 +84,7 @@ def inserir_meta(cd_emp, mes_ref, dt_ini_modelo, dt_fim_modelo):
             conn.close()
             return None
 
+
 # Função para atualizar a tabela it_prev_vda
 def atualizar_it_prev_vda(seq_meta, cod_vend, valor_meta):
     conn = conectar_banco()
@@ -76,7 +92,7 @@ def atualizar_it_prev_vda(seq_meta, cod_vend, valor_meta):
         try:
             cursor = conn.cursor()
 
-            # Atualizar ou inserir na tabela it_prev_vda
+            # Atualizar ou inserir na tabela it_prev_vda, garantindo que use o cd_prev_vda correto
             update_it_prev_vda = """
                 IF EXISTS (SELECT 1 FROM dbo.it_prev_vda WHERE cd_prev_vda = ? AND cd_vend = ?)
                 BEGIN
@@ -90,10 +106,12 @@ def atualizar_it_prev_vda(seq_meta, cod_vend, valor_meta):
                     VALUES (?, ?, 'FATUVL', ?)
                 END
             """
-            cursor.execute(update_it_prev_vda, seq_meta, cod_vend, valor_meta, seq_meta, cod_vend, seq_meta, cod_vend, valor_meta)
+            cursor.execute(update_it_prev_vda, seq_meta, cod_vend, valor_meta,
+                           seq_meta, cod_vend, seq_meta, cod_vend, valor_meta)
 
             conn.commit()
-            st.success(f"Meta atualizada ou inserida com sucesso para o vendedor {cod_vend}")
+            st.success(
+                f"Meta atualizada ou inserida com sucesso para o vendedor {cod_vend}")
         except Exception as e:
             conn.rollback()
             st.error(f"Erro ao atualizar os dados: {e}")
@@ -101,17 +119,21 @@ def atualizar_it_prev_vda(seq_meta, cod_vend, valor_meta):
             conn.close()
 
 # Função principal para inserir ou atualizar dados
-def inserir_ou_atualizar_dados(cd_emp, cod_vend, valor_meta, mes_ref, dt_ini_modelo, dt_fim_modelo):
-    seq_meta = verificar_meta_existente(cd_emp, mes_ref, dt_ini_modelo, dt_fim_modelo)
+
+
+def inserir_ou_atualizar_dados(cd_emp, cod_vend, valor_meta, dt_ini_modelo, dt_fim_modelo):
+    # Verifica se a meta já existe na tabela prev_vda
+    seq_meta = verificar_meta_existente(cd_emp, dt_ini_modelo)
 
     if seq_meta:
-        # Se a meta já existir, atualizar it_prev_vda
+        # Se a meta já existir, usar o cd_prev_vda existente para atualizar it_prev_vda
         atualizar_it_prev_vda(seq_meta, cod_vend, valor_meta)
     else:
-        # Se a meta não existir, inserir nova meta e depois atualizar it_prev_vda
-        seq_meta = inserir_meta(cd_emp, mes_ref, dt_ini_modelo, dt_fim_modelo)
+        # Se a meta não existir, inserir nova meta e depois usar o novo cd_prev_vda para atualizar it_prev_vda
+        seq_meta = inserir_meta(cd_emp, dt_ini_modelo, dt_fim_modelo)
         if seq_meta is not None:
             atualizar_it_prev_vda(seq_meta, cod_vend, valor_meta)
+
 
 # Título do App
 st.title('App de Metas por Vendedor')
@@ -120,7 +142,8 @@ st.title('App de Metas por Vendedor')
 uploaded_file = st.file_uploader("Escolha o arquivo Excel", type=['xlsx'])
 
 # Campo para selecionar o mês e o ano da meta (seleção de uma data qualquer no mês desejado)
-data_meta = st.date_input("Selecione uma data no mês de referência", value=datetime.now())
+data_meta = st.date_input(
+    "Selecione uma data no mês de referência", value=datetime.now())
 
 if uploaded_file:
     # Carregar a planilha
@@ -129,13 +152,14 @@ if uploaded_file:
     st.dataframe(df)
 
     # Limpar formatação e converter valores numéricos
-    df['META GERAL'] = df['META GERAL'].replace({'R$': '', ',': ''}, regex=True).astype(float)
+    df['META GERAL'] = df['META GERAL'].replace(
+        {'R$': '', ',': ''}, regex=True).astype(float)
 
     # Extrair o mês e o ano da data selecionada
-    mes_ref = data_meta.strftime('%Y-%m')  # Definir o ano e o mês
-    print('mes_ref: ',mes_ref)
-    dt_ini_modelo = mes_ref + '-01'
-    print('dt_ini_modelo: ',dt_ini_modelo)
+    # mes_ref = data_meta.strftime('%Y-%m')  # Definir o ano e o mês
+    # print('mes_ref: ',mes_ref)
+    dt_ini_modelo = data_meta.strftime('%Y-%m') + '-01'
+    print('dt_ini_modelo: ', dt_ini_modelo)
     # Definir o último dia do mês
     if data_meta.month == 2:  # Fevereiro (considera ano bissexto)
         if data_meta.year % 4 == 0 and (data_meta.year % 100 != 0 or data_meta.year % 400 == 0):
@@ -146,8 +170,8 @@ if uploaded_file:
         dt_fim_modelo = f"{data_meta.year}-{data_meta.month:02d}-30"
     else:  # Meses com 31 dias
         dt_fim_modelo = f"{data_meta.year}-{data_meta.month:02d}-31"
-        
-    print('dt_fim_modelo: ',dt_fim_modelo)
+
+    print('dt_fim_modelo: ', dt_fim_modelo)
 
     # Botão para processar os dados e inserir ou atualizar no banco
     if st.button('Inserir ou Atualizar dados no banco'):
@@ -160,6 +184,11 @@ if uploaded_file:
 
             if empresa:
                 # Inserir ou atualizar os dados no banco
-                inserir_ou_atualizar_dados(empresa, vendedor, valor_meta, dt_ini_modelo, dt_ini_modelo, dt_fim_modelo)
+                inserir_ou_atualizar_dados(
+                    empresa, vendedor, valor_meta, dt_ini_modelo, dt_fim_modelo)
             else:
                 st.error(f"Empresa não encontrada para o vendedor {vendedor}")
+
+
+# poetry shell
+# streamlit run app.py
