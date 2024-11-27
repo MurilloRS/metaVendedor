@@ -246,9 +246,30 @@ def tela_meta_empresa():
 
     # Exibindo o campo para inserir a meta para cada empresa
     for cd_emp, nome_fant in empresas:
-        # Exibir o nome da empresa e o campo para inserir a meta
+        # Buscar o valor da meta já inserida para a empresa (se houver)
+        conn = conectar_banco()
+        query_meta = f"""
+        SELECT valor
+        FROM dbo.meta
+        WHERE cd_emp = {cd_emp}
+        AND dt_inicio = '{dt_inicio}'
+        AND dt_fim = '{dt_fim}'
+        """
+        cursor = conn.cursor()
+        cursor.execute(query_meta)
+        meta_existente = cursor.fetchone()
+        conn.close()
+
+        # Se houver um valor de meta, preencher no campo de inserção
+        valor_meta_inicial = float(
+            meta_existente[0]) if meta_existente else 0.0
+        # Exibe o nome da empresa e o campo de inserção de meta
         valor_meta = st.number_input(
-            f"Meta para {nome_fant} ({cd_emp}):", min_value=0.0, format="%.2f")
+            f"Meta para {nome_fant} ({cd_emp}):", min_value=0.0, value=valor_meta_inicial, format="%.2f")
+
+        # Exibir o nome da empresa e o campo para inserir a meta
+        # valor_meta = st.number_input(
+        # f"Meta para {nome_fant} ({cd_emp}):", min_value=0.0, format="%.2f")
         metas[cd_emp] = valor_meta
         total_metas += valor_meta
 
